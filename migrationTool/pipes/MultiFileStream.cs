@@ -50,6 +50,7 @@ namespace AMSMigrate.Pipes
                 _logger.LogDebug("Begin downloading track: {name}", _trackPrefix);
 
                 BlockBlobClient blob;
+                BlockBlobClient? lastBlob = null;
 
                 if (!_isCloseCaption)
                 {
@@ -85,11 +86,16 @@ namespace AMSMigrate.Pipes
                     {
                         _logger.LogTrace("Downloading Chunk for stream: {name} time={time}", _trackPrefix, chunk);
                         await DownloadClearBlobContent(blob, stream, cancellationToken);
+                        lastBlob = blob;
                     }
                     else
                     {
                         _logger.LogWarning("Missing Chunk at time {time} for stream {stream}. Ignoring gap by skipping to next.", chunk, _trackPrefix);
-                        throw new InvalidDataException("Unexpected missing chunk indicated by manifest is currently not supported");
+                        if (lastBlob is null)
+                        {
+                            throw new InvalidDataException("Unexpected missing chunk indicated by manifest is currently not supported");
+                        }
+                        await DownloadClearBlobContent(lastBlob, stream, cancellationToken);
                     }
                 }
                 _logger.LogDebug("Finished downloading track {prefix}", _trackPrefix);
