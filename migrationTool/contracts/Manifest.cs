@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Xml.Serialization;
+using Azure.Monitor.Query.Models;
+using Azure.ResourceManager.Media.Models;
 
 namespace AMSMigrate.Contracts
 {
@@ -51,9 +53,12 @@ namespace AMSMigrate.Contracts
         // Check if the track is stored as one file per fragment.
         public bool IsMultiFile => string.IsNullOrEmpty(Path.GetExtension(Source));
 
-        public uint TrackID => uint.Parse(Parameters?.SingleOrDefault(p => p.Name == "trackID")?.Value ?? "1");
+        public uint TrackID => uint.Parse(Parameters?.SingleOrDefault(p => p.Name == "trackID")?.Value ?? InternalTrackNo.ToString());
 
         public string TrackName => Parameters?.SingleOrDefault(p => p.Name == "trackName")?.Value ?? Type.ToString().ToLower();
+
+        [XmlIgnore]
+        internal uint InternalTrackNo { get; set; }
     }
 
     public class VideoTrack : Track
@@ -121,6 +126,20 @@ namespace AMSMigrate.Contracts
             var manifest = serializer.Deserialize(new StreamReader(stream, Encoding.UTF8)) as Manifest;
             if (manifest == null) throw new ArgumentException("Invalid data", nameof(stream));
             manifest.FileName = filename;
+
+            // enforce internal track numbering, skip existing TrackID values
+            uint trackNo = 1;
+            var knownTrackIDs = manifest.Body.Tracks.Select(x => x.TrackID).Where(x => x > 0).ToArray();
+            foreach (var track in manifest.Body.Tracks.OrderByDescending(x => x.Type).ThenBy(x => x.SystemBitrate).ThenBy(x => x.TrackID))
+            {
+                while (knownTrackIDs.Contains(trackNo))
+                {
+                    trackNo++;
+                }
+                track.InternalTrackNo = trackNo;
+                trackNo++;
+            }
+
             return manifest;
         }
     }
