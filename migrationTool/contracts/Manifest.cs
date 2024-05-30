@@ -1,6 +1,7 @@
 ﻿using Microsoft.Extensions.Logging;
 using System.Text;
 using System.Xml.Serialization;
+using Azure.Monitor.Query.Models;
 
 namespace AMSMigrate.Contracts
 {
@@ -51,7 +52,9 @@ namespace AMSMigrate.Contracts
         // Check if the track is stored as one file per fragment.
         public bool IsMultiFile => string.IsNullOrEmpty(Path.GetExtension(Source));
 
-        public uint TrackID => uint.Parse(Parameters?.SingleOrDefault(p => p.Name == "trackID")?.Value ?? "1");
+        public uint TrackNo { get; set; }
+
+        public uint TrackID => uint.Parse(Parameters?.SingleOrDefault(p => p.Name == "trackID")?.Value ?? TrackNo.ToString());
 
         public string TrackName => Parameters?.SingleOrDefault(p => p.Name == "trackName")?.Value ?? Type.ToString().ToLower();
     }
@@ -121,6 +124,22 @@ namespace AMSMigrate.Contracts
             var manifest = serializer.Deserialize(new StreamReader(stream, Encoding.UTF8)) as Manifest;
             if (manifest == null) throw new ArgumentException("Invalid data", nameof(stream));
             manifest.FileName = filename;
+
+            uint trackNo = 0;
+            foreach (var track in manifest.Body.Tracks)
+            {
+                trackNo++;
+                track.TrackNo = trackNo;
+                if (track.SystemBitrate <= 0)
+                {
+                    string[] sourceParts = Path.GetFileNameWithoutExtension(track.Source).Split('_', StringSplitOptions.RemoveEmptyEntries);
+                    if (sourceParts.Length > 0 && int.TryParse(sourceParts.Last(), out int systemBitrate))
+                    {
+                        track.SystemBitrate = systemBitrate;
+                    }
+                }
+            }
+
             return manifest;
         }
     }
