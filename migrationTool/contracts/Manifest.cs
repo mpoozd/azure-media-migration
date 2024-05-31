@@ -2,6 +2,7 @@
 using System.Text;
 using System.Xml.Serialization;
 using Azure.Monitor.Query.Models;
+using Azure.ResourceManager.Media.Models;
 
 namespace AMSMigrate.Contracts
 {
@@ -52,11 +53,12 @@ namespace AMSMigrate.Contracts
         // Check if the track is stored as one file per fragment.
         public bool IsMultiFile => string.IsNullOrEmpty(Path.GetExtension(Source));
 
-        public uint TrackNo { get; set; }
-
-        public uint TrackID => uint.Parse(Parameters?.SingleOrDefault(p => p.Name == "trackID")?.Value ?? TrackNo.ToString());
+        public uint TrackID => uint.Parse(Parameters?.SingleOrDefault(p => p.Name == "trackID")?.Value ?? InternalTrackNo.ToString());
 
         public string TrackName => Parameters?.SingleOrDefault(p => p.Name == "trackName")?.Value ?? Type.ToString().ToLower();
+
+        [XmlIgnore]
+        internal uint InternalTrackNo { get; set; }
     }
 
     public class VideoTrack : Track
@@ -125,19 +127,52 @@ namespace AMSMigrate.Contracts
             if (manifest == null) throw new ArgumentException("Invalid data", nameof(stream));
             manifest.FileName = filename;
 
-            uint trackNo = 0;
-            foreach (var track in manifest.Body.Tracks)
+            // fix missing SystemBitrate, try to determine from source name
+            foreach (var track in manifest.Body.Tracks.Where(x => x.SystemBitrate <= 0))
             {
-                trackNo++;
-                track.TrackNo = trackNo;
-                if (track.SystemBitrate <= 0)
+                string[] sourceParts = Path.GetFileNameWithoutExtension(track.Source).Split('_', StringSplitOptions.RemoveEmptyEntries);
+                if (sourceParts.Length > 0 && int.TryParse(sourceParts.Last(), out int systemBitrate))
                 {
-                    string[] sourceParts = Path.GetFileNameWithoutExtension(track.Source).Split('_', StringSplitOptions.RemoveEmptyEntries);
-                    if (sourceParts.Length > 0 && int.TryParse(sourceParts.Last(), out int systemBitrate))
+                    track.SystemBitrate = systemBitrate;
+                }
+            }
+
+            // find tracks that have the same source and drop the audio track and the video tracks with the lowest bitrates
+            var tracksToRemove = new List<Track>();
+            var duplicateSourceGroups = manifest.Body.Tracks.GroupBy(x => x.Source).Where(x => x.Count() > 1);
+            foreach (var duplicateSourceGroup in duplicateSourceGroups)
+            {
+                var videoTracks = duplicateSourceGroup.Where(x => x.Type == StreamType.Video).OrderBy(x => x.SystemBitrate).ThenBy(x => x.TrackID).ToArray();
+                int videoTrackCount = videoTracks.Length;
+                if (videoTrackCount > 0)
+                {
+                    var audioTrack = duplicateSourceGroup.FirstOrDefault(x => x.Type == StreamType.Audio);
+                    if (audioTrack is not null)
                     {
-                        track.SystemBitrate = systemBitrate;
+                        tracksToRemove.Add(audioTrack);
+                    }
+                    if (videoTrackCount > 1)
+                    {
+                        tracksToRemove.AddRange(videoTracks.Take(videoTrackCount - 1));
                     }
                 }
+            }
+            if (tracksToRemove.Any())
+            {
+                manifest.Body.Tracks = manifest.Body.Tracks.ToList().Except(tracksToRemove).ToArray();
+            }
+
+            // enforce internal track numbering, skip existing TrackID values
+            uint trackNo = 1;
+            var knownTrackIDs = manifest.Body.Tracks.Select(x => x.TrackID).Where(x => x > 0).ToArray();
+            foreach (var track in manifest.Body.Tracks.OrderByDescending(x => x.Type).ThenBy(x => x.SystemBitrate).ThenBy(x => x.TrackID))
+            {
+                while (knownTrackIDs.Contains(trackNo))
+                {
+                    trackNo++;
+                }
+                track.InternalTrackNo = trackNo;
+                trackNo++;
             }
 
             return manifest;
