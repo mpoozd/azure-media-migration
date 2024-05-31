@@ -127,6 +127,16 @@ namespace AMSMigrate.Contracts
             if (manifest == null) throw new ArgumentException("Invalid data", nameof(stream));
             manifest.FileName = filename;
 
+            // fix missing SystemBitrate, try to determine from source name
+            foreach (var track in manifest.Body.Tracks.Where(x => x.SystemBitrate <= 0))
+            {
+                string[] sourceParts = Path.GetFileNameWithoutExtension(track.Source).Split('_', StringSplitOptions.RemoveEmptyEntries);
+                if (sourceParts.Length > 0 && int.TryParse(sourceParts.Last(), out int systemBitrate))
+                {
+                    track.SystemBitrate = systemBitrate;
+                }
+            }
+
             // enforce internal track numbering, skip existing TrackID values
             uint trackNo = 1;
             var knownTrackIDs = manifest.Body.Tracks.Select(x => x.TrackID).Where(x => x > 0).ToArray();
