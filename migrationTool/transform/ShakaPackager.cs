@@ -137,7 +137,7 @@ namespace AMSMigrate.Transform
                         Path.Combine(Path.GetDirectoryName(inputs[index])!, $"{Path.GetFileNameWithoutExtension(file)}_{t.TrackID}{Path.GetExtension(file)}") :
                         inputs[index];
                     var stream = t.Type.ToString().ToLowerInvariant();
-                    var language = string.IsNullOrEmpty(t.SystemLanguage) || t.SystemLanguage == "und" ? string.Empty : $",language={t.SystemLanguage},";
+                    var language = string.IsNullOrEmpty(t.SystemLanguage) || t.SystemLanguage == "und" ? string.Empty : $",language={t.SystemLanguage}";
                     var role = t is TextTrack ? $",dash_role={values[text_tracks++ % values.Length].ToString().ToLowerInvariant()}" : string.Empty;
                     var useType = SelectedTracks.Count(x => x.Source == t.Source && x.Type == t.Type) == 1;
                     return $"stream={(useType ? stream: t.TrackID - 1)},in={inputFile},out={outputs[i]},playlist_name={manifests[i]}{language}{drm_label}{role}";
