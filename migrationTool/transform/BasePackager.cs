@@ -79,6 +79,20 @@ namespace AMSMigrate.Transform
             _logger = logger;
 
             var manifest = assetDetails.Manifest!;
+
+            int idx = manifest.FileName.IndexOf("_manifest.ism");
+            if (idx >= 0)
+            {
+                string manifestPrefix = manifest.FileName.Substring(0, idx);
+                foreach (var t in manifest.Tracks)
+                {
+                    if (t.Source.Contains('\ufffd'))
+                    {
+                        t.Source = manifestPrefix + t.Source.Substring(idx);
+                    }
+                }
+            }
+
             // For text tracks pick VTT since it is supported by both shaka and ffmpeg.
             SelectedTracks = manifest.Tracks.Where(t =>
             {
