@@ -2,9 +2,9 @@ name: Docker Image CI
 
 on:
   push:
-    branches: [ "main", "deploy-test" ]
+    branches: [ "main", "update-shaka-packager-v3.2.0" ]
   pull_request:
-    branches: [ "main", "deploy-test" ]
+    branches: [ "main", "update-shaka-packager-v3.2.0" ]
 
 env:
   REGISTRY: ghcr.io
